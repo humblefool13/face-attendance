@@ -17,7 +17,7 @@ const Home = () => {
         <p>S3</p>
         <p>DynamoDB</p>
         <p>SNS</p>
-        <p>Rekognition</p>
+        <p>Amplify</p>
       </div>
       <hr className="w-full my-8 border-t-2 border-gray-300" />
       2024 © humblefool13.dev

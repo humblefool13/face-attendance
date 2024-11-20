@@ -7,8 +7,8 @@ import View from "./components/view";
 
 export default function App() {
   return (
-    <div className="flex justify-center items-center h-screen w-screen">
-      <div className="w-[360px] min-h-[800px] bg-gray-100 rounded-md">
+    <div className="flex justify-center items-center min-h-screen w-screen">
+      <div className="w-[360px] bg-gray-100 rounded-md">
         <Router>
           <Routes>
             <Route path="/" element={<Home />} />

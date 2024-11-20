@@ -1,16 +1,42 @@
 import { useEffect, useState } from "react";
-import { useNavigate } from "react-router-dom";
 import Back from "./back";
 
 const View = () => {
   const [attendances, setAttendances] = useState([]);
   const [selectedAttendance, setSelectedAttendance] = useState(null);
-  const navigate = useNavigate();
+
+  function stringToArray(string) {
+    const arr = [];
+    const students = string.split("-");
+    students.forEach((student) => {
+      const data = student.split("_");
+      arr.push({ name: data[0], regNo: data[1] });
+    });
+    return arr;
+  }
 
   async function getAllAttendances() {
-    // Query AWS and fetch all attendance data
-    // setAttendances(data);
-    // [{courseName: "Math 101", time: Timestamp, present: [{name: "John Doe", regNo: "1234"}, {...}]}]
+    const request = await fetch(
+      "https://aws-nishwan.humblefool13.dev/cors-proxy",
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          requestType: "view",
+        }),
+      }
+    );
+    const response = await request.json();
+    const data = JSON.parse(response).data;
+    setAttendances(
+      data.map((attendance) => {
+        return {
+          courseName: attendance.courseName,
+          time: attendance.time,
+          present: stringToArray(attendance.present),
+        };
+      })
+    );
   }
 
   useEffect(() => {
@@ -45,7 +71,7 @@ const View = () => {
                     {attendance.courseName}
                   </h3>
                   <p className="text-gray-500 text-sm">
-                    {new Date(attendance.time.seconds * 1000).toLocaleString()}
+                    {new Date(attendance.time).toLocaleString()}
                   </p>
                 </li>
               ))

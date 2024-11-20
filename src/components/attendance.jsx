@@ -1,14 +1,88 @@
-import { useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useState, useEffect, useRef } from "react";
 import WebcamCapture from "./camScanner";
 import Back from "./back";
+import * as faceapi from "face-api.js";
 
 const Attendance = () => {
   const [course, setCourse] = useState("");
   const [present, setPresent] = useState([]);
   const [ready, setReady] = useState(false);
+  const [students, setStudents] = useState([]);
+  const [isLoading, setIsLoading] = useState(false);
+  const [loaded, setModelsLoaded] = useState(false);
 
-  const navigate = useNavigate();
+  const matcher = useRef(null);
+
+  async function getAllStudents() {
+    const request = await fetch("https://aws-nishwan.humblefool13.dev");
+    const response = await request.json();
+    const students = response.students;
+    setStudents(students);
+  }
+
+  useEffect(() => {
+    getAllStudents();
+  }, []);
+
+  useEffect(() => {
+    trainModel();
+  }, [students]);
+
+  const loadModels = async () => {
+    try {
+      const MODEL_URL =
+        "https://cdn.jsdelivr.net/npm/@vladmandic/face-api/model/";
+      await faceapi.nets.tinyFaceDetector.loadFromUri(MODEL_URL);
+      await faceapi.nets.faceLandmark68Net.loadFromUri(MODEL_URL);
+      await faceapi.nets.faceRecognitionNet.loadFromUri(MODEL_URL);
+      console.log("Models loaded");
+      setModelsLoaded(true);
+    } catch (err) {
+      console.error("Error loading models:", err);
+    }
+  };
+
+  function base64ToImage(base64String) {
+    return new Promise((resolve, reject) => {
+      const img = new Image();
+      img.onload = () => resolve(img);
+      img.onerror = (err) => reject(err);
+      img.src = base64String;
+    });
+  }
+
+  async function createDescriptors(labelledDescriptor) {
+    const descriptors = await Promise.all(
+      students.map(async (student) => {
+        const img = await base64ToImage(student.image);
+        const result = await faceapi
+          .detectSingleFace(img, new faceapi.TinyFaceDetectorOptions())
+          .withFaceLandmarks()
+          .withFaceDescriptor();
+        return result
+          ? new faceapi.LabeledFaceDescriptors(student.name, [
+              result.descriptor,
+            ])
+          : null;
+      })
+    );
+    labelledDescriptor.push(...descriptors.filter(Boolean));
+  }
+
+  async function trainModel() {
+    await loadModels();
+    let labelledDescriptor = [];
+    await createDescriptors(labelledDescriptor);
+    const faceMatcher = new faceapi.FaceMatcher(labelledDescriptor);
+    matcher.current = faceMatcher;
+  }
+
+  function arrayToString(arr) {
+    let newarr = arr.map((student) => {
+      return `${student.name}_${student.regNo}`;
+    });
+    return newarr.join("-");
+  }
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -20,28 +94,76 @@ const Attendance = () => {
       setReady(true);
     } else {
       try {
-        // Send present to AWS
-        // [{},{},{},{name: "", regNo:""}]
-        // for storage/notifications
+        setIsLoading(true);
+        const request = await fetch(
+          "https://aws-nishwan.humblefool13.dev/cors-proxy",
+          {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              requestType: "attendance",
+              data: {
+                courseName: course,
+                time: new Date().toISOString(),
+                present: arrayToString(present),
+              },
+            }),
+          }
+        );
+        if (request.status !== 200) throw new Error("Unable to upload!");
         alert("Attendance Saved Successfully!");
         setCourse("");
         setPresent([]);
         setReady(false);
         window.location.reload();
       } catch (e) {
+        alert("Attendance Save Failed!");
         console.log(e);
+      } finally {
+        setIsLoading(false);
       }
     }
   };
 
   function markPresent(student) {
-    setPresent([...present, student]);
+    setPresent((prevPresent) => {
+      const alreadyPresent = prevPresent.some(
+        (s) => s.name === student.name && s.regNo === student.regNo
+      );
+      if (!alreadyPresent) {
+        return [...prevPresent, student];
+      }
+      return prevPresent;
+    });
+  }
+
+  function findRegNoByName(name) {
+    const student = students.find((student) => student.name === name);
+    return student.regNo;
   }
 
   async function handleFace(imageData) {
-    // Send to AWS for rekognition
-    // Return {name: "", regNo: ""}
-    // markPresent(student)
+    try {
+      const img = await base64ToImage(imageData);
+      const results = await faceapi
+        .detectAllFaces(img, new faceapi.TinyFaceDetectorOptions())
+        .withFaceLandmarks()
+        .withFaceDescriptors();
+
+      if (results.length > 0) {
+        results.forEach((result) => {
+          const bestResult = matcher.current.findBestMatch(result.descriptor);
+          if (bestResult.label !== "unknown") {
+            markPresent({
+              name: bestResult.label,
+              regNo: findRegNoByName(bestResult.label),
+            });
+          }
+        });
+      }
+    } catch (e) {
+      console.error("Error detecting faces:", e);
+    }
   }
 
   return (
@@ -57,14 +179,34 @@ const Attendance = () => {
           placeholder="Course Name"
           value={course}
           onChange={(e) => setCourse(e.target.value)}
-          className="p-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+          disabled={isLoading}
+          className={`p-2 border border-gray-300 rounded-md focus:outline-none ${
+            isLoading ? "bg-gray-200" : ""
+          }`}
         />
-        {ready ? <WebcamCapture sendFace={handleFace} /> : <></>}
+        {ready ? (
+          course && students.length ? (
+            <WebcamCapture sendFace={handleFace} />
+          ) : (
+            <>Loading Students Data...</>
+          )
+        ) : (
+          <></>
+        )}
         <button
           type="submit"
-          className="bg-green-500 text-white py-2 rounded-md font-semibold hover:bg-green-600"
+          className={`${
+            isLoading
+              ? "bg-gray-500 cursor-not-allowed"
+              : "bg-green-500 hover:bg-green-600"
+          } text-white py-2 rounded-md font-semibold`}
+          disabled={isLoading}
         >
-          {!ready ? "Take Attendance" : "Submit Attendance"}
+          {isLoading
+            ? "Submitting..."
+            : !ready
+            ? "Take Attendance"
+            : "Submit Attendance"}
         </button>
       </form>
       {ready ? (

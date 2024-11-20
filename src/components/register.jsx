@@ -1,5 +1,4 @@
 import { useState } from "react";
-import { useNavigate } from "react-router-dom";
 import WebcamCapture from "./cam";
 import Back from "./back";
 
@@ -9,7 +8,7 @@ const Register = () => {
   const [email, setEmail] = useState("");
   const [ready, setReady] = useState(false);
   const [capturedImage, setCapturedImage] = useState(null);
-  const navigate = useNavigate();
+  const [loading, setLoading] = useState(false);
 
   const handleCapture = (imageData) => {
     setCapturedImage(imageData);
@@ -17,6 +16,8 @@ const Register = () => {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
+    if (loading) return;
+
     if (!ready) {
       if (!name || !regNo || !email) {
         alert("Please complete all fields.");
@@ -28,9 +29,25 @@ const Register = () => {
         alert("Please complete all fields and capture an image.");
         return;
       }
+      setLoading(true);
       try {
-        // Send to AWS to store
-        // {name: "", regNo: "", email: "", image: IMAGE}
+        const request = await fetch(
+          "https://aws-nishwan.humblefool13.dev/cors-proxy",
+          {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              requestType: "register",
+              data: {
+                name,
+                regNo,
+                email,
+                image: capturedImage,
+              },
+            }),
+          }
+        );
+        if (request.status !== 200) throw new Error("Unable to upload!");
         alert("Registered Successfully!");
         setName("");
         setRegNo("");
@@ -39,7 +56,10 @@ const Register = () => {
         setCapturedImage(null);
         window.location.reload();
       } catch (e) {
+        alert("Registration Failed!");
         console.log(e);
+      } finally {
+        setLoading(false);
       }
     }
   };
@@ -94,9 +114,12 @@ const Register = () => {
         )}
         <button
           type="submit"
-          className="bg-green-500 text-white py-2 rounded-md font-semibold hover:bg-green-600"
+          disabled={loading}
+          className={`py-2 rounded-md font-semibold text-white ${
+            loading ? "bg-gray-400" : "bg-green-500 hover:bg-green-600"
+          }`}
         >
-          {!ready ? "Take Picture" : "Submit"}
+          {!ready ? "Take Picture" : loading ? "Submitting..." : "Submit"}
         </button>
       </form>
     </div>
