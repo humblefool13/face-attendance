@@ -14,7 +14,7 @@ const Attendance = () => {
   const matcher = useRef(null);
 
   async function getAllStudents() {
-    const request = await fetch("https://aws-nishwan.humblefool13.dev");
+    const request = await fetch("https://aws-akshat.humblefool13.dev");
     const response = await request.json();
     const students = response.students;
     setStudents(students);
@@ -54,6 +54,7 @@ const Attendance = () => {
   async function createDescriptors(labelledDescriptor) {
     const descriptors = await Promise.all(
       students.map(async (student) => {
+        if (student.image === "base64-string") return;
         const img = await base64ToImage(student.image);
         const result = await faceapi
           .detectSingleFace(img, new faceapi.TinyFaceDetectorOptions())
@@ -67,14 +68,20 @@ const Attendance = () => {
       })
     );
     labelledDescriptor.push(...descriptors.filter(Boolean));
+    console.log("Descriptors created!");
   }
 
   async function trainModel() {
-    await loadModels();
-    let labelledDescriptor = [];
-    await createDescriptors(labelledDescriptor);
-    const faceMatcher = new faceapi.FaceMatcher(labelledDescriptor);
-    matcher.current = faceMatcher;
+    try {
+      await loadModels();
+      let labelledDescriptor = [];
+      await createDescriptors(labelledDescriptor);
+      const faceMatcher = new faceapi.FaceMatcher(labelledDescriptor);
+      matcher.current = faceMatcher;
+      console.log("Matcher initialized:", matcher.current);
+    } catch (err) {
+      console.error("Error training model:", err);
+    }
   }
 
   function arrayToString(arr) {
@@ -96,7 +103,7 @@ const Attendance = () => {
       try {
         setIsLoading(true);
         const request = await fetch(
-          "https://aws-nishwan.humblefool13.dev/cors-proxy",
+          "https://aws-akshat.humblefool13.dev/cors-proxy",
           {
             method: "POST",
             headers: { "Content-Type": "application/json" },
@@ -143,6 +150,10 @@ const Attendance = () => {
   }
 
   async function handleFace(imageData) {
+    if (!loaded) {
+      console.error("Model not loaded yet!");
+      return;
+    }
     try {
       const img = await base64ToImage(imageData);
       const results = await faceapi

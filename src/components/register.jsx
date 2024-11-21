@@ -32,7 +32,7 @@ const Register = () => {
       setLoading(true);
       try {
         const request = await fetch(
-          "https://aws-nishwan.humblefool13.dev/cors-proxy",
+          "https://aws-akshat.humblefool13.dev/cors-proxy",
           {
             method: "POST",
             headers: { "Content-Type": "application/json" },
